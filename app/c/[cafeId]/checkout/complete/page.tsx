@@ -143,7 +143,7 @@ export default function CheckoutCompletePage() {
         {/* 버튼들 */}
         <div className="space-y-3">
           <button
-            onClick={() => router.push(`/orders/${order.id}`)}
+            onClick={() => router.push(`/c/${cafeId}/orders/${order.id}`)}
             className="w-full py-4 bg-cafe-500 text-white font-bold rounded-xl"
           >
             주문 상태 확인
