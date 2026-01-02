@@ -6,7 +6,6 @@ import { getCafeByShortCode, getCafe, getCafeStamp, addStamp, StampResult } from
 import { getCurrentUser } from '@/lib/auth';
 import { Cafe, User, Stamp } from '@/lib/supabase';
 import QuickLogin from '@/components/QuickLogin';
-import { AddToWalletButtonAuto } from '@/components/AddToWalletButton';
 
 interface StampPageProps {
   params: { cafeId: string };
@@ -195,13 +194,6 @@ export default function StampPage({ params }: StampPageProps) {
           {goalCount - (stampResult?.currentCount ?? currentCount)}개 더 모으면 무료 음료!
         </p>
       </div>
-
-      {/* Apple Wallet에 추가 버튼 */}
-      {stampState === 'idle' && (
-        <div className="max-w-md mx-auto w-full mb-4">
-          <AddToWalletButtonAuto cafeId={cafe.id} />
-        </div>
-      )}
 
       {/* 적립 버튼 / 결과 */}
       <div className="max-w-md mx-auto w-full flex-1 flex flex-col justify-center">
