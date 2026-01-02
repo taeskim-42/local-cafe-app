@@ -1,0 +1,63 @@
+{
+  "formatVersion": 1,
+  "organizationName": "동네카페",
+  "description": "카페 스탬프 카드",
+
+  "storeCard": {
+    "headerFields": [
+      {
+        "key": "stamps",
+        "label": "스탬프",
+        "value": "0/10",
+        "changeMessage": "스탬프가 적립되었습니다! 현재 %@"
+      }
+    ],
+    "primaryFields": [
+      {
+        "key": "cafe",
+        "label": "카페",
+        "value": "카페명"
+      }
+    ],
+    "secondaryFields": [
+      {
+        "key": "reward",
+        "label": "리워드",
+        "value": "10개 모으면 무료 음료!"
+      }
+    ],
+    "auxiliaryFields": [
+      {
+        "key": "member",
+        "label": "회원",
+        "value": "회원명"
+      }
+    ],
+    "backFields": [
+      {
+        "key": "phone",
+        "label": "등록 전화번호",
+        "value": "-"
+      },
+      {
+        "key": "totalEarned",
+        "label": "총 적립 스탬프",
+        "value": "0개"
+      },
+      {
+        "key": "totalUsed",
+        "label": "사용한 쿠폰",
+        "value": "0잔"
+      },
+      {
+        "key": "info",
+        "label": "안내",
+        "value": "카페 방문 시 NFC 태그를 탭하거나 QR코드를 스캔하면 스탬프가 적립됩니다."
+      }
+    ]
+  },
+
+  "backgroundColor": "#8B4513",
+  "foregroundColor": "#FFFFFF",
+  "labelColor": "#F5DEB3"
+}
