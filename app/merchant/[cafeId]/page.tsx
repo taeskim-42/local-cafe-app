@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getCafe, createStampToken } from '@/lib/api';
 import { getCurrentUser } from '@/lib/auth';
 import { loginWithKakao } from '@/lib/kakao';
-import { Cafe, User } from '@/lib/supabase';
+import { supabase, Cafe, User } from '@/lib/supabase';
 
 export default function MerchantStampPage() {
   const params = useParams();
@@ -23,6 +23,10 @@ export default function MerchantStampPage() {
   const [activeToken, setActiveToken] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(0);
   const [isCreating, setIsCreating] = useState(false);
+
+  // 주문 뱃지
+  const [pendingOrderCount, setPendingOrderCount] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const checkAuth = useCallback(async (currentUser: User | null) => {
     if (!currentUser) {
@@ -91,6 +95,58 @@ export default function MerchantStampPage() {
 
     return () => clearInterval(timer);
   }, [countdown]);
+
+  // 대기 주문 수 조회 및 실시간 구독
+  useEffect(() => {
+    if (!cafe) return;
+
+    const cafeId = cafe.id;
+    const cafeName = cafe.name;
+
+    // 초기 조회
+    async function fetchPendingOrders() {
+      const { count } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('cafe_id', cafeId)
+        .in('status', ['paid', 'accepted', 'preparing']);
+
+      setPendingOrderCount(count || 0);
+    }
+
+    fetchPendingOrders();
+
+    // 실시간 구독
+    const channel = supabase
+      .channel('merchant-orders')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          filter: `cafe_id=eq.${cafeId}`,
+        },
+        async (payload) => {
+          // 새 주문이면 소리 재생
+          if (payload.eventType === 'INSERT') {
+            audioRef.current?.play().catch(() => {});
+            // 브라우저 탭 제목 변경
+            document.title = '🔔 새 주문! - ' + cafeName;
+            setTimeout(() => {
+              document.title = cafeName + ' - 사장님 모드';
+            }, 5000);
+          }
+          // 주문 수 새로고침
+          fetchPendingOrders();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [cafe]);
 
   const handleCreateToken = useCallback(async () => {
     if (!user || !cafe) return;
@@ -174,9 +230,14 @@ export default function MerchantStampPage() {
             <div className="flex gap-2">
               <button
                 onClick={() => router.push(`/merchant/${cafeId}/orders`)}
-                className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg"
+                className="relative px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg"
               >
                 주문
+                {pendingOrderCount > 0 && (
+                  <span className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                    {pendingOrderCount > 9 ? '9+' : pendingOrderCount}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => router.push(`/merchant/${cafeId}/settings`)}
@@ -272,6 +333,13 @@ export default function MerchantStampPage() {
           </code>
         </div>
       </main>
+
+      {/* 알림 소리 */}
+      <audio
+        ref={audioRef}
+        src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
+        preload="auto"
+      />
     </div>
   );
 }
