@@ -1,58 +1,82 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { getCafe, createStampToken } from '@/lib/api';
 import { getCurrentUser } from '@/lib/auth';
+import { loginWithKakao } from '@/lib/kakao';
 import { Cafe, User } from '@/lib/supabase';
 
 export default function MerchantStampPage() {
   const params = useParams();
+  const router = useRouter();
   const cafeId = params.cafeId as string;
 
   const [user, setUser] = useState<User | null>(null);
   const [cafe, setCafe] = useState<Cafe | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [needsLogin, setNeedsLogin] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   // 토큰 상태
   const [activeToken, setActiveToken] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(0);
   const [isCreating, setIsCreating] = useState(false);
 
+  const checkAuth = useCallback(async (currentUser: User | null) => {
+    if (!currentUser) {
+      setNeedsLogin(true);
+      setIsLoading(false);
+      return;
+    }
+    setUser(currentUser);
+    setNeedsLogin(false);
+
+    const cafeData = await getCafe(cafeId);
+    if (!cafeData) {
+      setError('카페를 찾을 수 없습니다.');
+      setIsLoading(false);
+      return;
+    }
+
+    // 권한 확인 (카페 소유자인지)
+    if (cafeData.owner_id !== currentUser.id) {
+      setError('이 카페의 관리 권한이 없습니다.');
+      setIsLoading(false);
+      return;
+    }
+
+    setCafe(cafeData);
+    setIsLoading(false);
+  }, [cafeId]);
+
   useEffect(() => {
     async function init() {
       setIsLoading(true);
       try {
         const currentUser = await getCurrentUser();
-        if (!currentUser) {
-          setError('로그인이 필요합니다.');
-          return;
-        }
-        setUser(currentUser);
-
-        const cafeData = await getCafe(cafeId);
-        if (!cafeData) {
-          setError('카페를 찾을 수 없습니다.');
-          return;
-        }
-
-        // 권한 확인 (카페 소유자인지)
-        if (cafeData.owner_id !== currentUser.id) {
-          setError('이 카페의 관리 권한이 없습니다.');
-          return;
-        }
-
-        setCafe(cafeData);
+        await checkAuth(currentUser);
       } catch (err) {
         setError('데이터를 불러오는데 실패했습니다.');
-      } finally {
         setIsLoading(false);
       }
     }
 
     init();
-  }, [cafeId]);
+  }, [cafeId, checkAuth]);
+
+  const handleLogin = async () => {
+    setIsLoggingIn(true);
+    try {
+      const loggedInUser = await loginWithKakao();
+      await checkAuth(loggedInUser);
+    } catch (err) {
+      setError('로그인에 실패했습니다.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
 
   // 카운트다운 타이머
   useEffect(() => {
@@ -99,12 +123,39 @@ export default function MerchantStampPage() {
     );
   }
 
+  // 로그인 필요
+  if (needsLogin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <div className="text-center max-w-sm">
+          <div className="text-6xl mb-6">👨‍💼</div>
+          <h1 className="text-xl font-bold text-gray-900 mb-2">사장님 전용</h1>
+          <p className="text-gray-600 mb-6">
+            카페 관리를 위해 로그인이 필요합니다
+          </p>
+          <button
+            onClick={handleLogin}
+            disabled={isLoggingIn}
+            className="w-full py-4 bg-yellow-400 text-yellow-900 font-bold rounded-xl hover:bg-yellow-500 disabled:opacity-50"
+          >
+            {isLoggingIn ? '로그인 중...' : '카카오로 로그인'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <div className="text-center max-w-sm">
           <div className="text-4xl mb-4">⚠️</div>
-          <p className="text-gray-600">{error}</p>
+          <p className="text-gray-600 mb-4">{error}</p>
+          {user && (
+            <p className="text-sm text-gray-400">
+              로그인: {user.name}
+            </p>
+          )}
         </div>
       </div>
     );
@@ -115,8 +166,26 @@ export default function MerchantStampPage() {
       {/* 헤더 */}
       <header className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-md mx-auto px-4 py-4">
-          <h1 className="text-lg font-bold text-gray-900">{cafe?.name}</h1>
-          <p className="text-sm text-gray-500">사장님 모드</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-lg font-bold text-gray-900">{cafe?.name}</h1>
+              <p className="text-sm text-gray-500">사장님 모드</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => router.push(`/merchant/${cafeId}/orders`)}
+                className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg"
+              >
+                주문
+              </button>
+              <button
+                onClick={() => router.push(`/merchant/${cafeId}/settings`)}
+                className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg"
+              >
+                설정
+              </button>
+            </div>
+          </div>
         </div>
       </header>
 

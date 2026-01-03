@@ -48,6 +48,28 @@ export async function getCafe(cafeId: string): Promise<Cafe | null> {
 }
 
 /**
+ * 카페 정보 수정
+ */
+export async function updateCafe(
+  cafeId: string,
+  updates: Partial<Pick<Cafe, 'name' | 'address' | 'stamp_goal' | 'image_url'>>
+): Promise<Cafe> {
+  const { data, error } = await supabase
+    .from('cafes')
+    .update(updates)
+    .eq('id', cafeId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('카페 수정 실패:', error);
+    throw new Error(`카페 수정 실패: ${error.message}`);
+  }
+
+  return data as Cafe;
+}
+
+/**
  * 카페 메뉴 조회
  */
 export async function getMenus(cafeId: string): Promise<Menu[]> {

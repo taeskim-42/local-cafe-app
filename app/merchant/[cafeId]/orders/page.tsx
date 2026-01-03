@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getCafe, getCafeOrders, updateOrderStatus } from '@/lib/api';
 import { getCurrentUser } from '@/lib/auth';
+import { loginWithKakao } from '@/lib/kakao';
 import { supabase, Cafe, Order, User } from '@/lib/supabase';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -34,44 +35,66 @@ export default function MerchantOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [needsLogin, setNeedsLogin] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [filter, setFilter] = useState<string>('active'); // 'active' | 'all'
+
+  const checkAuth = useCallback(async (currentUser: User | null) => {
+    if (!currentUser) {
+      setNeedsLogin(true);
+      setIsLoading(false);
+      return;
+    }
+    setUser(currentUser);
+    setNeedsLogin(false);
+
+    const cafeData = await getCafe(cafeId);
+    if (!cafeData) {
+      setError('카페를 찾을 수 없습니다.');
+      setIsLoading(false);
+      return;
+    }
+
+    if (cafeData.owner_id !== currentUser.id) {
+      setError('이 카페의 관리 권한이 없습니다.');
+      setIsLoading(false);
+      return;
+    }
+
+    setCafe(cafeData);
+
+    // 주문 목록 조회
+    const orderList = await getCafeOrders(cafeData.id);
+    setOrders(orderList);
+    setIsLoading(false);
+  }, [cafeId]);
 
   useEffect(() => {
     async function init() {
       setIsLoading(true);
       try {
         const currentUser = await getCurrentUser();
-        if (!currentUser) {
-          setError('로그인이 필요합니다.');
-          return;
-        }
-        setUser(currentUser);
-
-        const cafeData = await getCafe(cafeId);
-        if (!cafeData) {
-          setError('카페를 찾을 수 없습니다.');
-          return;
-        }
-
-        if (cafeData.owner_id !== currentUser.id) {
-          setError('이 카페의 관리 권한이 없습니다.');
-          return;
-        }
-
-        setCafe(cafeData);
-
-        // 주문 목록 조회
-        const orderList = await getCafeOrders(cafeData.id);
-        setOrders(orderList);
+        await checkAuth(currentUser);
       } catch (err) {
         setError('데이터를 불러오는데 실패했습니다.');
-      } finally {
         setIsLoading(false);
       }
     }
 
     init();
-  }, [cafeId]);
+  }, [cafeId, checkAuth]);
+
+  const handleLogin = async () => {
+    setIsLoggingIn(true);
+    try {
+      const loggedInUser = await loginWithKakao();
+      await checkAuth(loggedInUser);
+    } catch (err) {
+      setError('로그인에 실패했습니다.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
 
   // 실시간 주문 구독
   useEffect(() => {
@@ -157,11 +180,39 @@ export default function MerchantOrdersPage() {
     );
   }
 
+  // 로그인 필요
+  if (needsLogin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <div className="text-center max-w-sm">
+          <div className="text-6xl mb-6">👨‍💼</div>
+          <h1 className="text-xl font-bold text-gray-900 mb-2">사장님 전용</h1>
+          <p className="text-gray-600 mb-6">
+            주문 관리를 위해 로그인이 필요합니다
+          </p>
+          <button
+            onClick={handleLogin}
+            disabled={isLoggingIn}
+            className="w-full py-4 bg-yellow-400 text-yellow-900 font-bold rounded-xl hover:bg-yellow-500 disabled:opacity-50"
+          >
+            {isLoggingIn ? '로그인 중...' : '카카오로 로그인'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <p className="text-gray-600">{error}</p>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <div className="text-center max-w-sm">
+          <div className="text-4xl mb-4">⚠️</div>
+          <p className="text-gray-600 mb-4">{error}</p>
+          {user && (
+            <p className="text-sm text-gray-400">
+              로그인: {user.name}
+            </p>
+          )}
         </div>
       </div>
     );
