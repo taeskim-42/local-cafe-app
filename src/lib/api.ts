@@ -243,6 +243,42 @@ export async function updateOrderStatus(
 }
 
 /**
+ * 주문 취소 (손님용 - 접수 전에만 가능)
+ */
+export async function cancelOrder(orderId: string, userId: string): Promise<Order> {
+  // 주문 조회
+  const { data: order, error: fetchError } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('id', orderId)
+    .eq('user_id', userId)
+    .single();
+
+  if (fetchError || !order) {
+    throw new Error('주문을 찾을 수 없습니다.');
+  }
+
+  // 접수 전 상태인지 확인
+  if (order.status !== 'paid') {
+    throw new Error('접수된 주문은 취소할 수 없습니다.');
+  }
+
+  // 취소 처리
+  const { data, error } = await supabase
+    .from('orders')
+    .update({ status: 'cancelled' })
+    .eq('id', orderId)
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error('주문 취소에 실패했습니다.');
+  }
+
+  return data as Order;
+}
+
+/**
  * short_code로 카페 조회 (NFC/QR용)
  */
 export async function getCafeByShortCode(shortCode: string): Promise<Cafe | null> {

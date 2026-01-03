@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { getOrder, getCafe } from '@/lib/api';
+import { getOrder, getCafe, cancelOrder } from '@/lib/api';
 import { getCurrentUser } from '@/lib/auth';
 import { supabase, Order, Cafe, User } from '@/lib/supabase';
 
@@ -58,6 +58,7 @@ export default function OrderStatusPage() {
   const [cafe, setCafe] = useState<Cafe | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -137,6 +138,24 @@ export default function OrderStatusPage() {
       }
     }
   }, []);
+
+  // 주문 취소 핸들러
+  const handleCancel = async () => {
+    if (!user || !order) return;
+
+    if (!confirm('주문을 취소하시겠습니까?')) return;
+
+    setIsCancelling(true);
+    try {
+      const cancelled = await cancelOrder(order.id, user.id);
+      setOrder(cancelled);
+      alert('주문이 취소되었습니다.');
+    } catch (err: any) {
+      alert(err.message || '주문 취소에 실패했습니다.');
+    } finally {
+      setIsCancelling(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -263,6 +282,17 @@ export default function OrderStatusPage() {
             <span className="text-cafe-500">{order.total_amount.toLocaleString()}원</span>
           </div>
         </div>
+
+        {/* 주문 취소 버튼 (접수 전에만 표시) */}
+        {order.status === 'paid' && (
+          <button
+            onClick={handleCancel}
+            disabled={isCancelling}
+            className="w-full py-4 bg-red-100 text-red-600 font-bold rounded-xl mb-3 disabled:opacity-50"
+          >
+            {isCancelling ? '취소 중...' : '주문 취소'}
+          </button>
+        )}
 
         {/* 홈으로 버튼 */}
         <button
