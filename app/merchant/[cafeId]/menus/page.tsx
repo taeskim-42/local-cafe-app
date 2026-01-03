@@ -7,7 +7,17 @@ import { getCurrentUser } from '@/lib/auth';
 import { loginWithKakao } from '@/lib/kakao';
 import { Cafe, Menu, User } from '@/lib/supabase';
 
-const CATEGORIES = ['커피', '음료', '디저트', '기타'];
+const CATEGORIES = [
+  '커피',
+  '콜드브루',
+  '블렌디드',
+  '티/에이드',
+  '음료',
+  '디저트',
+  '베이커리',
+  '푸드',
+  'MD/상품',
+];
 
 export default function MenuManagementPage() {
   const params = useParams();

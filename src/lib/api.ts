@@ -1,4 +1,4 @@
-import { supabase, Cafe, Menu, Stamp, Order, OrderItem, User, StampToken } from './supabase';
+import { supabase, Cafe, Menu, Stamp, Order, OrderItem, User, StampToken, RegistrationCode } from './supabase';
 
 // 스탬프 적립 결과
 export interface StampResult {
@@ -800,6 +800,185 @@ export async function createCafe(params: {
   if (error) {
     console.error('카페 등록 실패:', error);
     throw new Error(`카페 등록 실패: ${error.message}`);
+  }
+
+  return data as Cafe;
+}
+
+// ============================================
+// 등록 코드 관련 API (Super Admin용)
+// ============================================
+
+/**
+ * 등록 코드 생성 (랜덤 8자리)
+ */
+function generateRegistrationCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = 'CAFE-';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+/**
+ * Admin 여부 확인
+ */
+export async function isAdmin(userId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('users')
+    .select('is_admin')
+    .eq('id', userId)
+    .single();
+
+  if (error || !data) return false;
+  return data.is_admin === true;
+}
+
+/**
+ * 등록 코드 생성 (Admin 전용)
+ */
+export async function createRegistrationCode(): Promise<RegistrationCode> {
+  let code = generateRegistrationCode();
+  let attempts = 0;
+
+  // 중복 체크
+  while (attempts < 10) {
+    const { data: existing } = await supabase
+      .from('registration_codes')
+      .select('id')
+      .eq('code', code)
+      .single();
+
+    if (!existing) break;
+    code = generateRegistrationCode();
+    attempts++;
+  }
+
+  const { data, error } = await supabase
+    .from('registration_codes')
+    .insert({ code })
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`코드 생성 실패: ${error.message}`);
+  }
+
+  return data as RegistrationCode;
+}
+
+/**
+ * 모든 등록 코드 조회 (Admin 전용)
+ */
+export async function getAllRegistrationCodes(): Promise<(RegistrationCode & { cafe?: Cafe; user?: User })[]> {
+  const { data, error } = await supabase
+    .from('registration_codes')
+    .select(`
+      *,
+      user:users!registration_codes_used_by_fkey(id, name, kakao_id)
+    `)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('코드 목록 조회 실패:', error);
+    return [];
+  }
+
+  // 사용된 코드의 경우 카페 정보도 조회
+  const result = await Promise.all(
+    (data || []).map(async (code: RegistrationCode & { user?: User }) => {
+      if (code.used_by) {
+        const { data: cafes } = await supabase
+          .from('cafes')
+          .select('*')
+          .eq('owner_id', code.used_by)
+          .limit(1);
+        return { ...code, cafe: cafes?.[0] || undefined };
+      }
+      return code;
+    })
+  );
+
+  return result;
+}
+
+/**
+ * 등록 코드 확인 (유효성 체크)
+ */
+export async function verifyRegistrationCode(code: string): Promise<RegistrationCode | null> {
+  const { data, error } = await supabase
+    .from('registration_codes')
+    .select('*')
+    .eq('code', code.toUpperCase())
+    .is('used_by', null)
+    .single();
+
+  if (error || !data) return null;
+  return data as RegistrationCode;
+}
+
+/**
+ * 등록 코드 사용 (점주 등록)
+ */
+export async function useRegistrationCode(code: string, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('registration_codes')
+    .update({
+      used_by: userId,
+      used_at: new Date().toISOString(),
+    })
+    .eq('code', code.toUpperCase())
+    .is('used_by', null);
+
+  if (error) {
+    throw new Error(`코드 사용 실패: ${error.message}`);
+  }
+}
+
+/**
+ * 점주용 카페 생성 (등록 코드 사용 후)
+ */
+export async function createCafeForOwner(params: {
+  ownerId: string;
+  name: string;
+  address: string;
+  stampGoal?: number;
+  phone?: string;
+}): Promise<Cafe> {
+  const { ownerId, name, address, stampGoal = 10, phone } = params;
+
+  // short_code 생성
+  let shortCode = generateShortCode();
+  let attempts = 0;
+  while (attempts < 10) {
+    const { data: existing } = await supabase
+      .from('cafes')
+      .select('id')
+      .eq('short_code', shortCode)
+      .single();
+
+    if (!existing) break;
+    shortCode = generateShortCode();
+    attempts++;
+  }
+
+  const { data, error } = await supabase
+    .from('cafes')
+    .insert({
+      owner_id: ownerId,
+      name,
+      address,
+      phone: phone || null,
+      stamp_goal: stampGoal,
+      short_code: shortCode,
+      status: 'approved',
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`카페 생성 실패: ${error.message}`);
   }
 
   return data as Cafe;

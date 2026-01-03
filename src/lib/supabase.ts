@@ -97,3 +97,11 @@ export interface StampToken {
   used_at: string | null;
   created_at: string;
 }
+
+export interface RegistrationCode {
+  id: string;
+  code: string;
+  created_at: string;
+  used_by: string | null;
+  used_at: string | null;
+}
