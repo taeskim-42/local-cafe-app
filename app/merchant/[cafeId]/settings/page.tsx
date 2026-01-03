@@ -231,6 +231,13 @@ export default function CafeSettingsPage() {
 
           <div className="space-y-3">
             <button
+              onClick={() => router.push(`/merchant/${cafeId}/menus`)}
+              className="w-full py-3 px-4 bg-gray-100 text-gray-700 rounded-xl text-left flex justify-between items-center"
+            >
+              <span>메뉴 관리</span>
+              <span>→</span>
+            </button>
+            <button
               onClick={() => router.push(`/merchant/${cafeId}/orders`)}
               className="w-full py-3 px-4 bg-gray-100 text-gray-700 rounded-xl text-left flex justify-between items-center"
             >

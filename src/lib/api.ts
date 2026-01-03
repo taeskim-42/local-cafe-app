@@ -615,6 +615,103 @@ export async function autoRedeemStamp(params: {
 }
 
 // ============================================
+// 메뉴 관리 API
+// ============================================
+
+/**
+ * 메뉴 추가
+ */
+export async function createMenu(params: {
+  cafeId: string;
+  name: string;
+  price: number;
+  category: string;
+  description?: string;
+  imageUrl?: string;
+  options?: Menu['options'];
+}): Promise<Menu> {
+  const { cafeId, name, price, category, description, imageUrl, options } = params;
+
+  const { data, error } = await supabase
+    .from('menus')
+    .insert({
+      cafe_id: cafeId,
+      name,
+      price,
+      category,
+      description: description || null,
+      image_url: imageUrl || null,
+      options: options || [],
+      is_available: true,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('메뉴 추가 실패:', error);
+    throw new Error(`메뉴 추가 실패: ${error.message}`);
+  }
+
+  return data as Menu;
+}
+
+/**
+ * 메뉴 수정
+ */
+export async function updateMenu(
+  menuId: string,
+  updates: Partial<Pick<Menu, 'name' | 'price' | 'category' | 'description' | 'image_url' | 'options' | 'is_available'>>
+): Promise<Menu> {
+  const { data, error } = await supabase
+    .from('menus')
+    .update(updates)
+    .eq('id', menuId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('메뉴 수정 실패:', error);
+    throw new Error(`메뉴 수정 실패: ${error.message}`);
+  }
+
+  return data as Menu;
+}
+
+/**
+ * 메뉴 삭제
+ */
+export async function deleteMenu(menuId: string): Promise<void> {
+  const { error } = await supabase
+    .from('menus')
+    .delete()
+    .eq('id', menuId);
+
+  if (error) {
+    console.error('메뉴 삭제 실패:', error);
+    throw new Error(`메뉴 삭제 실패: ${error.message}`);
+  }
+}
+
+/**
+ * 카페의 모든 메뉴 조회 (관리자용 - 품절 포함)
+ */
+export async function getAllMenus(cafeId: string): Promise<Menu[]> {
+  const { data, error } = await supabase
+    .from('menus')
+    .select('*')
+    .eq('cafe_id', cafeId)
+    .order('category', { ascending: true })
+    .order('name', { ascending: true });
+
+  if (error) {
+    console.error('메뉴 조회 실패:', error);
+    return [];
+  }
+
+  return data as Menu[];
+}
+
+// ============================================
 // 카페 등록 관련 API
 // ============================================
 
@@ -642,6 +739,33 @@ export async function createCafe(params: {
   phone?: string;
 }): Promise<Cafe> {
   const { ownerId, name, address, stampGoal = 10, description, phone } = params;
+
+  // 중복 등록 방지: 같은 사장님이 같은 이름의 카페를 등록했는지 확인
+  const { data: existingByName } = await supabase
+    .from('cafes')
+    .select('id, name')
+    .eq('owner_id', ownerId)
+    .ilike('name', name.trim())
+    .single();
+
+  if (existingByName) {
+    throw new Error(`이미 "${existingByName.name}" 카페가 등록되어 있습니다.`);
+  }
+
+  // 중복 등록 방지: 같은 주소로 이미 등록된 카페가 있는지 확인
+  const { data: existingByAddress } = await supabase
+    .from('cafes')
+    .select('id, name, owner_id')
+    .ilike('address', address.trim())
+    .single();
+
+  if (existingByAddress) {
+    if (existingByAddress.owner_id === ownerId) {
+      throw new Error(`같은 주소에 "${existingByAddress.name}" 카페가 이미 등록되어 있습니다.`);
+    } else {
+      throw new Error('해당 주소에 이미 다른 카페가 등록되어 있습니다.');
+    }
+  }
 
   // short_code 생성 (중복 체크)
   let shortCode = generateShortCode();
