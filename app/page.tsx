@@ -183,6 +183,19 @@ export default function HomePage() {
             </button>
           </div>
         )}
+
+        {/* 사장님 카페 등록 */}
+        <div className="mt-12 pt-8 border-t border-gray-200 text-center">
+          <p className="text-sm text-gray-500 mb-3">
+            카페를 운영하고 계신가요?
+          </p>
+          <button
+            onClick={() => router.push('/register-cafe')}
+            className="px-6 py-2 border-2 border-cafe-500 text-cafe-600 font-medium rounded-xl hover:bg-cafe-50"
+          >
+            내 카페 등록하기
+          </button>
+        </div>
       </main>
     </div>
   );

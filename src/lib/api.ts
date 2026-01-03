@@ -613,3 +613,70 @@ export async function autoRedeemStamp(params: {
 
   return result;
 }
+
+// ============================================
+// 카페 등록 관련 API
+// ============================================
+
+/**
+ * 6자리 short_code 생성
+ */
+function generateShortCode(): string {
+  const chars = 'abcdefghjkmnpqrstuvwxyz23456789'; // 혼동 문자 제외
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+/**
+ * 카페 등록
+ */
+export async function createCafe(params: {
+  ownerId: string;
+  name: string;
+  address: string;
+  stampGoal?: number;
+  description?: string;
+  phone?: string;
+}): Promise<Cafe> {
+  const { ownerId, name, address, stampGoal = 10, description, phone } = params;
+
+  // short_code 생성 (중복 체크)
+  let shortCode = generateShortCode();
+  let attempts = 0;
+  while (attempts < 10) {
+    const { data: existing } = await supabase
+      .from('cafes')
+      .select('id')
+      .eq('short_code', shortCode)
+      .single();
+
+    if (!existing) break;
+    shortCode = generateShortCode();
+    attempts++;
+  }
+
+  const { data, error } = await supabase
+    .from('cafes')
+    .insert({
+      owner_id: ownerId,
+      name,
+      address,
+      description: description || null,
+      phone: phone || null,
+      stamp_goal: stampGoal,
+      short_code: shortCode,
+      status: 'approved', // 자동 승인 (추후 관리자 승인 프로세스 추가 가능)
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('카페 등록 실패:', error);
+    throw new Error(`카페 등록 실패: ${error.message}`);
+  }
+
+  return data as Cafe;
+}
