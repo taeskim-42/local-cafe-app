@@ -568,7 +568,7 @@ function generateToken(): string {
 export async function createStampToken(params: {
   cafeId: string;
   merchantId: string;
-}): Promise<{ token: string; expiresAt: Date }> {
+}): Promise<{ id: string; token: string; expiresAt: Date }> {
   const { cafeId, merchantId } = params;
 
   // 기존 미사용 토큰 만료 처리 (같은 카페의)
@@ -583,18 +583,18 @@ export async function createStampToken(params: {
   const token = generateToken();
   const expiresAt = new Date(Date.now() + 30 * 1000); // 30초 후 만료
 
-  const { error } = await supabase.from('stamp_tokens').insert({
+  const { data, error } = await supabase.from('stamp_tokens').insert({
     cafe_id: cafeId,
     token,
     created_by: merchantId,
     expires_at: expiresAt.toISOString(),
-  });
+  }).select('id').single();
 
-  if (error) {
+  if (error || !data) {
     throw new Error('토큰 생성 실패');
   }
 
-  return { token, expiresAt };
+  return { id: data.id, token, expiresAt };
 }
 
 /**

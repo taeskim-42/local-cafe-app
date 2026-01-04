@@ -21,8 +21,10 @@ export default function MerchantStampPage() {
 
   // 토큰 상태
   const [activeToken, setActiveToken] = useState<string | null>(null);
+  const [activeTokenId, setActiveTokenId] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(0);
   const [isCreating, setIsCreating] = useState(false);
+  const [stampSuccess, setStampSuccess] = useState(false);
 
   // 주문 뱃지
   const [pendingOrderCount, setPendingOrderCount] = useState(0);
@@ -84,8 +86,9 @@ export default function MerchantStampPage() {
 
   // 카운트다운 타이머
   useEffect(() => {
-    if (countdown <= 0) {
+    if (countdown <= 0 && !stampSuccess) {
       setActiveToken(null);
+      setActiveTokenId(null);
       return;
     }
 
@@ -94,7 +97,42 @@ export default function MerchantStampPage() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [countdown]);
+  }, [countdown, stampSuccess]);
+
+  // 토큰 사용 실시간 구독
+  useEffect(() => {
+    if (!activeTokenId || !cafe) return;
+
+    const channel = supabase
+      .channel(`stamp-token-${activeTokenId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'stamp_tokens',
+          filter: `id=eq.${activeTokenId}`,
+        },
+        (payload) => {
+          // 토큰이 사용됨 (used_by가 설정됨)
+          if (payload.new && (payload.new as any).used_by) {
+            setStampSuccess(true);
+            setCountdown(0);
+            // 3초 후 초기화
+            setTimeout(() => {
+              setActiveToken(null);
+              setActiveTokenId(null);
+              setStampSuccess(false);
+            }, 3000);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeTokenId, cafe]);
 
   // 대기 주문 수 조회 및 실시간 구독
   useEffect(() => {
@@ -152,13 +190,15 @@ export default function MerchantStampPage() {
     if (!user || !cafe) return;
 
     setIsCreating(true);
+    setStampSuccess(false);
     try {
-      const { token, expiresAt } = await createStampToken({
+      const { id, token, expiresAt } = await createStampToken({
         cafeId: cafe.id,
         merchantId: user.id,
       });
 
       setActiveToken(token);
+      setActiveTokenId(id);
       const remainingSeconds = Math.floor((expiresAt.getTime() - Date.now()) / 1000);
       setCountdown(remainingSeconds);
     } catch (err) {
@@ -257,12 +297,23 @@ export default function MerchantStampPage() {
             스탬프 적립
           </h2>
 
-          {activeToken ? (
+          {stampSuccess ? (
+            // 적립 성공!
+            <div className="text-center">
+              <div className="mb-4">
+                <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-green-500 mb-4 animate-bounce">
+                  <span className="text-4xl">🎉</span>
+                </div>
+              </div>
+              <p className="text-2xl font-bold text-green-600 mb-2">적립 완료!</p>
+              <p className="text-gray-600">고객에게 스탬프가 적립되었습니다</p>
+            </div>
+          ) : activeToken ? (
             // 토큰 활성화 상태
             <div className="text-center">
               <div className="mb-4">
-                <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-green-100 mb-4">
-                  <span className="text-4xl">✅</span>
+                <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-yellow-100 mb-4 animate-pulse">
+                  <span className="text-4xl">📱</span>
                 </div>
               </div>
 
