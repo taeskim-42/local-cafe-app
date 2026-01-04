@@ -221,12 +221,25 @@ export async function getCafeOrders(cafeId: string, status?: string): Promise<Or
 }
 
 /**
- * 주문 상태 업데이트
+ * 주문 상태 업데이트 + Push 알림 전송
  */
 export async function updateOrderStatus(
   orderId: string,
   status: Order['status']
 ): Promise<Order | null> {
+  // 먼저 기존 주문 정보 조회 (사용자 ID 필요)
+  const { data: existingOrder, error: fetchError } = await supabase
+    .from('orders')
+    .select('*, cafe:cafes(name)')
+    .eq('id', orderId)
+    .single();
+
+  if (fetchError || !existingOrder) {
+    console.error('주문 조회 실패:', fetchError);
+    return null;
+  }
+
+  // 상태 업데이트
   const { data, error } = await supabase
     .from('orders')
     .update({ status })
@@ -239,7 +252,60 @@ export async function updateOrderStatus(
     return null;
   }
 
+  // Push 알림 전송 (비동기로 처리)
+  const statusMessages: Record<string, { title: string; body: string }> = {
+    accepted: {
+      title: '주문이 접수되었습니다',
+      body: `${(existingOrder as any).cafe?.name || '카페'}에서 주문을 확인했습니다.`,
+    },
+    preparing: {
+      title: '음료를 만들고 있어요',
+      body: '잠시만 기다려주세요!',
+    },
+    ready: {
+      title: '음료가 준비되었습니다!',
+      body: '카운터에서 픽업해주세요.',
+    },
+    cancelled: {
+      title: '주문이 취소되었습니다',
+      body: '카페에 문의해주세요.',
+    },
+  };
+
+  const message = statusMessages[status];
+  if (message && existingOrder.user_id) {
+    // 비동기로 Push 알림 전송 (실패해도 주문 업데이트에 영향 없음)
+    sendPushNotification(existingOrder.user_id, orderId, message.title, message.body, status)
+      .catch(err => console.error('Push 알림 전송 실패:', err));
+  }
+
   return data as Order;
+}
+
+/**
+ * Push 알림 전송 헬퍼 함수
+ */
+async function sendPushNotification(
+  userId: string,
+  orderId: string,
+  title: string,
+  body: string,
+  type: string
+): Promise<void> {
+  try {
+    const response = await fetch('/api/push/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, orderId, title, body, type }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error('Push API error:', error);
+    }
+  } catch (error) {
+    console.error('Push notification error:', error);
+  }
 }
 
 /**

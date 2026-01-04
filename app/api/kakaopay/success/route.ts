@@ -13,7 +13,48 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // 임시 주문 정보 조회
+    // 1. 먼저 orders 테이블에서 pending 상태 주문 확인 (모바일 앱 케이스)
+    const { data: existingOrder } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('id', orderId)
+      .eq('status', 'pending')
+      .single();
+
+    if (existingOrder && existingOrder.payment_tid) {
+      // 모바일 앱에서 생성한 주문 - TID가 orders 테이블에 있음
+      const approveResult = await kakaoPayApprove({
+        tid: existingOrder.payment_tid,
+        orderId,
+        userId: existingOrder.user_id,
+        pgToken,
+      });
+
+      // 주문 상태 업데이트
+      await supabase
+        .from('orders')
+        .update({
+          status: 'paid',
+          pay_token: approveResult.tid,
+          paid_at: new Date().toISOString(),
+        })
+        .eq('id', orderId);
+
+      // 스탬프 적립
+      await addStamp({
+        userId: existingOrder.user_id,
+        cafeId: existingOrder.cafe_id,
+        source: 'order',
+        orderId: existingOrder.id,
+      });
+
+      // 모바일은 딥링크로 돌아가거나 완료 페이지 표시
+      return NextResponse.redirect(
+        new URL(`/payment/complete?orderId=${orderId}&status=success`, request.url)
+      );
+    }
+
+    // 2. pending_orders 테이블 확인 (웹 케이스)
     const { data: pendingOrder } = await supabase
       .from('pending_orders')
       .select('*')
