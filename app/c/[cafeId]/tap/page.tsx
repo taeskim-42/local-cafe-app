@@ -6,7 +6,38 @@ import { getCafe, getCafeByShortCode, autoRedeemStamp, getCafeStamp } from '@/li
 import { getCurrentUser } from '@/lib/auth';
 import { Cafe, User, Stamp } from '@/lib/supabase';
 
-type PageState = 'loading' | 'need_login' | 'checking' | 'no_active' | 'success' | 'error';
+type PageState = 'loading' | 'need_login' | 'checking' | 'no_active' | 'success' | 'error' | 'app_redirect' | 'install_app';
+
+// Try to open the native app via deep link
+function tryOpenApp(cafeId: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const deepLink = `localcafe://tap/${cafeId}`;
+    const startTime = Date.now();
+
+    // Create invisible iframe to try deep link
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = deepLink;
+    document.body.appendChild(iframe);
+
+    // Also try window.location for iOS
+    setTimeout(() => {
+      window.location.href = deepLink;
+    }, 100);
+
+    // Check if app opened (page will be hidden if app opens)
+    const checkInterval = setInterval(() => {
+      if (document.hidden) {
+        clearInterval(checkInterval);
+        resolve(true);
+      } else if (Date.now() - startTime > 1500) {
+        clearInterval(checkInterval);
+        document.body.removeChild(iframe);
+        resolve(false);
+      }
+    }, 100);
+  });
+}
 
 export default function NfcTapPage() {
   const params = useParams();
@@ -23,6 +54,20 @@ export default function NfcTapPage() {
   useEffect(() => {
     async function init() {
       try {
+        // 0. Try to open native app first (mobile only)
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        if (isMobile) {
+          setState('app_redirect');
+          const appOpened = await tryOpenApp(cafeIdOrCode);
+          if (appOpened) {
+            return; // App opened, stop here
+          }
+          // App not installed, show install prompt
+          setState('install_app');
+          return;
+        }
+
+        setState('loading');
         // 1. 카페 정보 조회 (short_code 또는 id로)
         let cafeData = await getCafeByShortCode(cafeIdOrCode);
         if (!cafeData) {
@@ -101,6 +146,63 @@ export default function NfcTapPage() {
         });
     }
   };
+
+  // 앱 리다이렉트 시도 중
+  if (state === 'app_redirect') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-cafe-50">
+        <div className="text-center">
+          <div className="text-6xl mb-4">📱</div>
+          <p className="text-lg font-medium text-gray-700">앱으로 이동 중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 앱 설치 유도
+  if (state === 'install_app') {
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    // TODO: Replace with actual App Store / Play Store URLs when published
+    const appStoreUrl = 'https://apps.apple.com/app/local-cafe/id0000000000';
+    const playStoreUrl = 'https://play.google.com/store/apps/details?id=com.localcafe.app';
+    const storeUrl = isIOS ? appStoreUrl : playStoreUrl;
+
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-cafe-50 p-4">
+        <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg p-6 text-center">
+          <div className="text-6xl mb-4">☕</div>
+          <h1 className="text-xl font-bold text-gray-900 mb-2">동네카페 앱 설치</h1>
+          <p className="text-gray-600 mb-6">
+            더 빠르고 편리한 스탬프 적립을 위해<br />
+            동네카페 앱을 설치해주세요
+          </p>
+
+          <div className="space-y-3">
+            <a
+              href={storeUrl}
+              className="block w-full py-4 bg-cafe-500 text-white text-lg font-bold rounded-xl hover:bg-cafe-600 transition-colors"
+            >
+              {isIOS ? 'App Store에서 설치' : 'Play Store에서 설치'}
+            </a>
+
+            <button
+              onClick={() => setState('loading')}
+              className="w-full py-3 text-gray-500 font-medium hover:text-gray-700"
+            >
+              웹에서 계속하기
+            </button>
+          </div>
+
+          <div className="mt-6 pt-4 border-t">
+            <p className="text-xs text-gray-400">
+              앱 설치 후 NFC 태그를 다시 터치하면<br />
+              자동으로 앱에서 적립됩니다
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // 로딩
   if (state === 'loading' || state === 'checking') {

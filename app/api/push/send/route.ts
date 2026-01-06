@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     // 사용자의 push 구독 정보 가져오기
     const { data: subscriptions, error } = await supabase
       .from('push_subscriptions')
-      .select('endpoint, platform')
+      .select('endpoint')
       .eq('user_id', userId);
 
     if (error) {
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
 
     // Expo Push 토큰 필터링 (ExponentPushToken으로 시작)
     const expoPushTokens = subscriptions
-      .filter(sub => sub.endpoint.startsWith('ExponentPushToken'))
+      .filter(sub => sub.endpoint && sub.endpoint.startsWith('ExponentPushToken'))
       .map(sub => sub.endpoint);
 
     if (expoPushTokens.length === 0) {

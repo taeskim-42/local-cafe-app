@@ -3,14 +3,15 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getCurrentUser, signOut } from '@/lib/auth';
-import { getUserStamps } from '@/lib/api';
-import { User, Stamp } from '@/lib/supabase';
+import { getUserStamps, getOwnerCafes } from '@/lib/api';
+import { User, Stamp, Cafe } from '@/lib/supabase';
 import { loginWithKakao } from '@/lib/kakao';
 
 export default function HomePage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [stamps, setStamps] = useState<Stamp[]>([]);
+  const [ownedCafes, setOwnedCafes] = useState<Cafe[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
@@ -22,8 +23,12 @@ export default function HomePage() {
         setUser(currentUser);
 
         if (currentUser) {
-          const myStamps = await getUserStamps(currentUser.id);
+          const [myStamps, myCafes] = await Promise.all([
+            getUserStamps(currentUser.id),
+            getOwnerCafes(currentUser.id),
+          ]);
           setStamps(myStamps);
+          setOwnedCafes(myCafes);
         }
       } catch (err) {
         console.error(err);
@@ -40,8 +45,12 @@ export default function HomePage() {
     try {
       const loggedInUser = await loginWithKakao();
       setUser(loggedInUser);
-      const myStamps = await getUserStamps(loggedInUser.id);
+      const [myStamps, myCafes] = await Promise.all([
+        getUserStamps(loggedInUser.id),
+        getOwnerCafes(loggedInUser.id),
+      ]);
       setStamps(myStamps);
+      setOwnedCafes(myCafes);
     } catch (err) {
       console.error(err);
     } finally {
@@ -53,6 +62,7 @@ export default function HomePage() {
     await signOut();
     setUser(null);
     setStamps([]);
+    setOwnedCafes([]);
   };
 
   if (isLoading) {
@@ -68,7 +78,10 @@ export default function HomePage() {
       {/* 헤더 - 로그인 시에만 로그아웃 버튼 표시 */}
       {user && (
         <header className="pt-8 pb-4 px-4">
-          <div className="max-w-md mx-auto flex justify-end">
+          <div className="max-w-md mx-auto flex justify-between items-center">
+            <div className="text-sm text-gray-600">
+              안녕하세요, {user.name}님!
+            </div>
             <button
               onClick={handleLogout}
               className="text-sm text-gray-500 hover:text-gray-700"
@@ -77,6 +90,40 @@ export default function HomePage() {
             </button>
           </div>
         </header>
+      )}
+
+      {/* 점주 모드 - 본인 카페가 있을 때만 표시 */}
+      {user && ownedCafes.length > 0 && (
+        <div className="max-w-md mx-auto px-4 mb-4">
+          <div className="bg-amber-500 rounded-2xl p-4 shadow-lg">
+            <div className="flex items-center justify-between">
+              <div className="text-white">
+                <p className="font-bold text-lg">👨‍💼 사장님 모드</p>
+                <p className="text-amber-100 text-sm">내 카페 관리하기</p>
+              </div>
+              {ownedCafes.length === 1 ? (
+                <button
+                  onClick={() => router.push(`/merchant/${ownedCafes[0].id}`)}
+                  className="px-4 py-2 bg-white text-amber-600 font-bold rounded-xl hover:bg-amber-50"
+                >
+                  {ownedCafes[0].name}
+                </button>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  {ownedCafes.map((cafe) => (
+                    <button
+                      key={cafe.id}
+                      onClick={() => router.push(`/merchant/${cafe.id}`)}
+                      className="px-3 py-1 bg-white text-amber-600 font-bold rounded-lg text-sm hover:bg-amber-50"
+                    >
+                      {cafe.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       <main className="max-w-md mx-auto px-4 py-8">

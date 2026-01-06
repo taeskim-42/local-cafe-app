@@ -100,8 +100,13 @@ export default function MerchantOrdersPage() {
   useEffect(() => {
     if (!cafe) return;
 
+    const fetchOrders = async () => {
+      const orderList = await getCafeOrders(cafe.id);
+      setOrders(orderList);
+    };
+
     const channel = supabase
-      .channel('orders')
+      .channel(`merchant-orders-${cafe.id}`)
       .on(
         'postgres_changes',
         {
@@ -110,16 +115,21 @@ export default function MerchantOrdersPage() {
           table: 'orders',
           filter: `cafe_id=eq.${cafe.id}`,
         },
-        async (payload) => {
-          // 주문 목록 새로고침
-          const orderList = await getCafeOrders(cafe.id);
-          setOrders(orderList);
+        (payload) => {
+          console.log('Order change detected:', payload);
+          fetchOrders();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Subscription status:', status);
+      });
+
+    // 폴링 백업 (5초마다) - Realtime이 안될 경우 대비
+    const pollInterval = setInterval(fetchOrders, 5000);
 
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(pollInterval);
     };
   }, [cafe]);
 
